@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { hasPermission } from "@/lib/permission"
 import {
   CalendarDays,
   ChartColumn,
@@ -97,32 +98,61 @@ const insightItems = [
 export function AppSidebar() {
   const { data: session } = authClient.useSession()
 
-  const [canViewDashboard, setCanViewDashboard] = React.useState(false)
-  const [canManageUsers, setCanManageUsers] = React.useState(false)
+  const [role, setRole] = React.useState("")
 
   React.useEffect(() => {
-    if (!session?.user.id) return
-
-    const checkPermissions = async () => {
-      const dashboardResult = await authClient.admin.hasPermission({
-        permissions: { dashboard: ["view"] },
-      })
-
-      const usersResult = await authClient.admin.hasPermission({
-        permissions: { user: ["set-role"] },
-      })
-
-      setCanViewDashboard(dashboardResult.data?.success ?? false)
-      setCanManageUsers(usersResult.data?.success ?? false)
+    if (!session?.user.id) {
+      setRole("")
+      return
     }
 
-    checkPermissions()
+    let active = true
+
+    const loadRole = async () => {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/me`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error("Unable to load user role")
+        }
+
+        const data = await response.json()
+
+        if (active) {
+          setRole(data.user?.role || "")
+        }
+      } catch (error) {
+        console.error("Failed to load role:", error)
+
+        if (active) {
+          setRole("")
+        }
+      }
+    }
+
+    loadRole()
+
+    return () => {
+      active = false
+    }
   }, [session?.user.id])
+
+  const canViewDashboard = hasPermission(role, "dashboard:view")
+  const canManageUsers = hasPermission(role, "user:set-role")
+  // console.log("Role:", role);
+  // console.log("Dashboard permission:", canViewDashboard);
+  // console.log("Manage users permission:", canManageUsers);
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <WorkspaceMenu />
+        <WorkspaceMenu role={role} />
       </SidebarHeader>
 
       <SidebarContent>
@@ -143,34 +173,46 @@ export function AppSidebar() {
         )}
 
         <SidebarGroup>
-          <SidebarGroupLabel>Planning</SidebarGroupLabel>
+          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
 
           <SidebarGroupContent>
             <SidebarMenu>
               <BoardsMenu />
 
               {planningItems.map((item) => (
-                <NavItem key={item.title} {...item} />
+                <NavItem
+                  key={item.href}
+                  title={item.title}
+                  href={item.href}
+                  icon={item.icon}
+                />
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Insights</SidebarGroupLabel>
+        {canViewDashboard && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Insights</SidebarGroupLabel>
 
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {insightItems.map((item) => (
-                <NavItem key={item.title} {...item} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {insightItems.map((item) => (
+                  <NavItem
+                    key={item.href}
+                    title={item.title}
+                    href={item.href}
+                    icon={item.icon}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {canManageUsers && (
           <SidebarGroup>
-            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
 
             <SidebarGroupContent>
               <SidebarMenu>
@@ -239,8 +281,9 @@ function BoardsMenu() {
             </div>
 
             <DropdownMenuItem
-              render={<Link href={`/boards/${boardId}`} />}
-          >
+            render={<Link href={`/boards/${boardId}`} />}
+            >
+            Data Team
           </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -285,26 +328,25 @@ function BoardsMenu() {
   )
 }
 
-function WorkspaceMenu() {
-  const { data: session } = authClient.useSession()
-
+function WorkspaceMenu({ role }: { role: string }) {
   return (
     <DropdownMenu>
       <SidebarMenu>
         <SidebarMenuItem>
           <DropdownMenuTrigger
-            render={
-              <SidebarMenuButton size="lg" tooltip="Exovie" />
-            }
+            render={<SidebarMenuButton size="lg" tooltip="Exovie" />}
           >
             <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground">
               E
             </div>
 
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">Exovie</span>
+              <span className="truncate font-medium">
+                Exovie
+              </span>
+
               <span className="truncate text-xs text-sidebar-foreground/60">
-                {session?.user.role}
+                {role || "Loading..."}
               </span>
             </div>
 

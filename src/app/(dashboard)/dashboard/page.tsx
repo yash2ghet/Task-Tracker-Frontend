@@ -12,7 +12,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import { authClient } from "@/lib/auth-client";
+import { hasPermission } from "@/lib/permission";
 
 import { useEffect, useState } from "react";
 import { getDashboardData } from "../../../../lib/dashboard-api";
@@ -34,11 +34,31 @@ export default function Dashboard() {
 
   useEffect(() => {
     const checkPermission = async () => {
-      const { data } = await authClient.admin.hasPermission({
-        permissions: { dashboard: ["view"] },
-      });
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/me`,
+          {
+            credentials: "include",
+          }
+        );
 
-      setCanViewDashboard(data?.success ?? false);
+        if (!response.ok) {
+          setCanViewDashboard(false);
+          return;
+        }
+
+        const result = await response.json();
+
+        const allowed = hasPermission(
+          result.user?.role || "",
+          "dashboard:view"
+        );
+
+        setCanViewDashboard(allowed);
+      } catch (error) {
+        console.error("Permission check failed:", error);
+        setCanViewDashboard(false);
+      }
     };
 
     checkPermission();
@@ -66,6 +86,14 @@ export default function Dashboard() {
 
     return () => clearInterval(interval);
   }, [canViewDashboard]);
+
+  if (canViewDashboard === null) {
+    return <main className="p-6">Checking permissions...</main>;
+  }
+
+  if (canViewDashboard === false) {
+    return <main className="p-6">Access denied. Redirecting...</main>;
+  }
 
   if (loading) {
     return <main className="p-6">Loading dashboard...</main>;
